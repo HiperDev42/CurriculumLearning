@@ -1,0 +1,33 @@
+[project]
+name = "curriculum-learning"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Felipe Kelemen Bernardino", email = "felipe.kelemen02@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "accelerate>=1.15.0",
+    "matplotlib>=3.11.2",
+    "pandas>=3.0.5",
+    "python-dotenv>=1.2.3",
+    "torch>=2.14.0",
+    "transformers>=5.17.0",
+    "wandb>=0.30.0",
+]
+
+[project.scripts]
+curriculum-learning = "curriculum_learning:main"
+
+[build-system]
+requires = ["uv_build>=0.12.15,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pandas-stubs>=3.0.5.260914",
+    "pytest>=9.1.1",
+    "ruff>=0.16.8",
+    "ty>=0.0.81",
+]
