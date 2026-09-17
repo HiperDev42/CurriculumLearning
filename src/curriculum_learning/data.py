@@ -3,7 +3,6 @@ import random
 from collections.abc import Callable
 from functools import lru_cache
 
-import numpy as np
 import pandas as pd
 from datasets import Dataset, load_dataset
 from lang_complexity.complexity import complexities
@@ -34,55 +33,32 @@ heuristic_functions = {
 
 
 def calculate_difficulty(
-    dataset: Dataset,
+    dataframe: pd.DataFrame,
     heuristic_fn: Callable = heuristic_functions["word_count"],
     metric_name: str = "pragmatic_deletion_bzip2",
-) -> Dataset:
-    df = dataset.to_pandas()
-    if not isinstance(df, pd.DataFrame):
-        raise TypeError("Expected Dataset.to_pandas() to return a DataFrame")
+) -> pd.Series:
+    df = dataframe
+    group_size = 250
 
-    df["heuristic_score"] = df.apply(heuristic_fn, axis=1)
-    df.sort_values(by="heuristic_score", inplace=True)
-
-    groups = [df.iloc[i : i + 250] for i in range(0, len(df), 250)]
+    if metric_name not in complexities:
+        raise ValueError(f"Metric '{metric_name}' is not available in complexities.")
     metric_fn = complexities[metric_name].compute
 
-    for group in groups:
-        sentences = [row["premise"] for _, row in group.iterrows()] + [
-            row["hypothesis"] for _, row in group.iterrows()
-        ]
-        text = "\n".join(sentences)
-        group["complexity_score"] = metric_fn(text)
+    if df.empty:
+        return pd.Series(dtype=float, name="difficulty")
 
-    df = pd.concat(groups)
+    heuristic_score = df.apply(heuristic_fn, axis=1)
+    sorted_index = heuristic_score.sort_values().index
 
-    return Dataset.from_pandas(df)
+    difficulty = pd.Series(index=df.index, dtype=float, name="difficulty")
 
+    for start in range(0, len(sorted_index), group_size):
+        group_index = sorted_index[start : start + group_size]
+        group = df.loc[group_index]
+        text = "\n".join(group["premise"].tolist() + group["hypothesis"].tolist())
+        difficulty.loc[group_index] = metric_fn(text)
 
-def annotate_difficulty_levels(
-    dataset: Dataset,
-    heuristic_fn: Callable = heuristic_functions["word_count"],
-    metric_name: str = "pragmatic_deletion_bzip2",
-    num_difficulty_levels: int = 3,
-) -> Dataset:
-    if num_difficulty_levels < 1:
-        raise ValueError("num_difficulty_levels must be at least 1")
-
-    processed_dataset = calculate_difficulty(dataset, heuristic_fn, metric_name)
-
-    df = processed_dataset.to_pandas()
-    if not isinstance(df, pd.DataFrame):
-        raise TypeError("Expected Dataset.to_pandas() to return a DataFrame")
-
-    sorted_indices = df.sort_values(by="complexity_score").index
-    df["difficulty_level"] = 0
-    for level, group_indices in enumerate(
-        np.array_split(sorted_indices, num_difficulty_levels)
-    ):
-        df.loc[group_indices, "difficulty_level"] = level
-
-    return Dataset.from_pandas(df, preserve_index=False)
+    return difficulty
 
 
 def tokenize_dataset(dataset: Dataset, tokenizer: PreTrainedTokenizerBase):
