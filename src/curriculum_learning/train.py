@@ -1,28 +1,24 @@
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from functools import cache
 from pathlib import Path
 from typing import Any
 
-import evaluate
 import numpy as np
-import wandb
-from transformers import (
-    AutoModelForSequenceClassification,
-    AutoTokenizer,
-    DataCollatorWithPadding,
-    PreTrainedTokenizerBase,
-    Trainer,
-    TrainingArguments,
-)
 
-from .data import load_base_dataset, tokenize_dataset
+from curriculum_learning.data import load_base_dataset, tokenize_dataset
 
 PROJECT_NAME = "curriculum-learning"
 OUTPUT_DIR_BASE: Path = Path("output/")
-accuracy: Any = evaluate.load("accuracy")
-auc_score: Any = evaluate.load("roc_auc")
 
 logger = logging.getLogger(__name__)
+
+
+@cache
+def load_metric(name: str) -> Any:
+    import evaluate
+
+    return evaluate.load(name)
 
 
 @dataclass
@@ -42,6 +38,17 @@ class TrainingConfig:
 
 
 def run_training(config: TrainingConfig):
+    from transformers import (
+        AutoModelForSequenceClassification,
+        AutoTokenizer,
+        DataCollatorWithPadding,
+        PreTrainedTokenizerBase,
+        Trainer,
+        TrainingArguments,
+    )
+
+    import wandb
+
     config.output_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Training output will be saved to {config.output_dir}")
 
@@ -60,13 +67,14 @@ def run_training(config: TrainingConfig):
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
     train_dataset = tokenize_dataset(base_dataset["train"], tokenizer)
     validation_dataset = tokenize_dataset(base_dataset["validation"], tokenizer)
-    test_dataset = tokenize_dataset(base_dataset["test"], tokenizer)
+    # test_dataset = tokenize_dataset(base_dataset["test"], tokenizer)
 
     wandb.init(
         project=PROJECT_NAME,
         name=config.name,
         group=config.group,
-        reinit=True,
+        config=asdict(config),
+        resume=True,
     )
 
     training_args = TrainingArguments(
@@ -101,8 +109,7 @@ def run_training(config: TrainingConfig):
             compute_metrics=compute_metrics,
         )
 
-    trainer.train()
-    trainer.evaluate(eval_dataset=test_dataset, metric_key_prefix="test")
+    return trainer.train()
 
 
 def compute_metrics(eval_pred):
@@ -114,11 +121,11 @@ def compute_metrics(eval_pred):
     probabilities = np.exp(shifted_logits)
     probabilities /= np.sum(probabilities, axis=-1, keepdims=True)
 
-    accuracy_result = accuracy.compute(
+    accuracy_result = load_metric("accuracy").compute(
         predictions=predictions,
         references=labels,
     )
-    auc_result = auc_score.compute(
+    auc_result = load_metric("roc_auc").compute(
         prediction_scores=probabilities[:, 1],
         references=labels,
     )

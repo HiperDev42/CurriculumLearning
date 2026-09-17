@@ -11,6 +11,7 @@ dependencies = [
     "accelerate>=1.15.0",
     "datasets>=5.0.1",
     "evaluate>=0.4.6",
+    "lang-complexity",
     "matplotlib>=3.11.2",
     "numpy>=2.5.3",
     "pandas>=3.0.5",
@@ -35,3 +36,6 @@ dev = [
     "ruff>=0.16.8",
     "ty>=0.0.81",
 ]
+
+[tool.uv.sources]
+lang-complexity = { git = "https://github.com/HiperDev42/lang_complexity.git", rev = "main" }

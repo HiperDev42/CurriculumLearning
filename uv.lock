@@ -471,6 +471,7 @@ dependencies = [
     { name = "accelerate" },
     { name = "datasets" },
     { name = "evaluate" },
+    { name = "lang-complexity" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "pandas" },
@@ -494,6 +495,7 @@ requires-dist = [
     { name = "accelerate", specifier = ">=1.15.0" },
     { name = "datasets", specifier = ">=5.0.1" },
     { name = "evaluate", specifier = ">=0.4.6" },
+    { name = "lang-complexity", git = "https://github.com/HiperDev42/lang_complexity.git?rev=main" },
     { name = "matplotlib", specifier = ">=3.11.2" },
     { name = "numpy", specifier = ">=2.5.3" },
     { name = "pandas", specifier = ">=3.0.5" },
@@ -948,6 +950,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/e9/2d/8982c1fb7926da5bb7ed60318c3665b5c3f941447271ac982960a11b8637/kiwisolver-1.5.1-cp315-cp315t-win_amd64.whl", hash = "sha256:cb6fae641357ed2f6e533c0d3c6504a4a5703621a50c89459e46051d56b61140", size = 75379, upload-time = "2026-08-28T10:28:06.307Z" },
     { url = "https://files.pythonhosted.org/packages/07/78/ba7b6dfa1708b82b373ac056928a30c545d5c1a627df9839dcec3c6c1881/kiwisolver-1.5.1-cp315-cp315t-win_arm64.whl", hash = "sha256:b390aec180a7c054919c04898835e1c77bced23ea8383eb2c570213bf25d1a86", size = 73011, upload-time = "2026-08-28T10:28:07.578Z" },
 ]
+
+[[package]]
+name = "lang-complexity"
+version = "0.1.0"
+source = { git = "https://github.com/HiperDev42/lang_complexity.git?rev=main#1e2a088c4d464470aef6a6345e172cb07204a4b5" }
 
 [[package]]
 name = "markdown-it-py"
