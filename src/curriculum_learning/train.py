@@ -102,6 +102,11 @@ def run_training(config: TrainingConfig):
         report_to=["wandb"],
         run_name=f"{config.group}/{config.name}",
     )
+    logger.info("Training device: %s", training_args.device)
+    if training_args.device.type != "cuda":
+        logger.warning(
+            "Training is using %s instead of a CUDA GPU.", training_args.device
+        )
 
     trainer: Trainer
 
