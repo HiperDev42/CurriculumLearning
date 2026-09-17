@@ -73,7 +73,7 @@ def run_training(config: TrainingConfig):
         name=config.name,
         group=config.group,
         config=asdict(config),
-        resume=True,
+        resume="never",
     )
 
     training_args = TrainingArguments(
@@ -120,7 +120,10 @@ def run_training(config: TrainingConfig):
             compute_metrics=compute_metrics,
         )
 
-    return trainer.train()
+    try:
+        return trainer.train()
+    finally:
+        wandb.finish()
 
 
 def compute_metrics(eval_pred):

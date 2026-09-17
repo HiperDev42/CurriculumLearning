@@ -23,18 +23,19 @@ def main() -> None:
 
     configs: list[TrainingConfig] = [
         TrainingConfig(
-            name="example_run",
+            name="baseline",
             group="example_group",
-            output_dir=Path("output/example_run"),
+            output_dir=Path("output/baseline"),
             model_base_name="bert-base-uncased",
             num_train_epochs=5,
         ),
         TrainingConfig(
-            name="example_run_2",
+            name="curriculum_baby_steps",
             group="example_group",
-            output_dir=Path("output/example_run_2"),
+            output_dir=Path("output/curriculum_baby_steps"),
             model_base_name="bert-base-uncased",
             num_train_epochs=5,
+            curriculum_learning=True,
         ),
     ]
 
