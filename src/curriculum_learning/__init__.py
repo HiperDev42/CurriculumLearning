@@ -4,8 +4,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from curriculum_learning.train import TrainingConfig, run_training
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -20,11 +18,15 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    load_dotenv(args.env_file)
+    project_root = Path(__file__).resolve().parents[2]
+    env_file = args.env_file or project_root / ".env"
+    load_dotenv(env_file)
+
+    from curriculum_learning.train import TrainingConfig, run_training
 
     run_group = datetime.now().astimezone().strftime("execution-%Y%m%d-%H%M%S-%z")
     model_base_name = "bert-base-uncased"
-    num_train_epochs = 10
+    num_train_epochs = 50
 
     configs: list[TrainingConfig] = [
         TrainingConfig(
