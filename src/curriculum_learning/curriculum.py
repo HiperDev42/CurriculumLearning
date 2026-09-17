@@ -1,6 +1,7 @@
 import logging
 
 import numpy as np
+import pandas as pd
 import torch
 from torch.utils.data import Sampler
 from transformers import Trainer
@@ -11,28 +12,81 @@ logger = logging.getLogger(__name__)
 class CurriculumSampler(Sampler):
     """Sampler that restricts training to progressively harder difficulty levels.
 
+    ``difficulty`` is bucketed into ``num_levels`` quantile levels (roughly
+    equal row counts), level 0 being the easiest, via ``pd.qcut``. Since
+    quantile binning splits by value interval, rows sharing a difficulty
+    score always land in the same level.
+
+    ``num_epochs`` (the total training epoch count) is split across the
+    ``num_levels`` stages as evenly as possible; any remainder epochs go to
+    the later (harder) stages. The active stage advances once per epoch via
+    ``set_epoch`` (called automatically by ``Trainer``).
+
     The Trainer computes its per-epoch step count once, from the first epoch's
     dataloader length, and reuses that count for every subsequent epoch. So
     each epoch must yield the same number of indices; only *which* rows those
     indices point to may change. Rows visible at the current epoch's stage
     (``difficulty_level <= stage``) are drawn with replacement up to the full
     dataset length whenever that visible pool is smaller than the dataset.
-
-    The active stage advances once per epoch via ``set_epoch`` (called
-    automatically by ``Trainer``), mapping epoch index to stage index using
-    ``stage_epoch_counts`` (see ``build_stage_epoch_counts``).
     """
 
     def __init__(
         self,
-        difficulty_levels: list[int],
-        stage_epoch_counts: list[int],
+        difficulty: pd.Series,
+        num_levels: int,
+        num_epochs: int,
         seed: int = 42,
+        higher_is_harder: bool = True,
     ):
-        self.difficulty_levels = np.asarray(difficulty_levels)
+        if num_levels < 1:
+            raise ValueError(f"num_levels must be >= 1, got {num_levels}")
+        if num_epochs < num_levels:
+            raise ValueError(
+                f"num_epochs ({num_epochs}) must be >= num_levels ({num_levels}) "
+                "so every stage gets at least one epoch"
+            )
+
+        self.difficulty_levels = self._assign_levels(
+            difficulty, num_levels, higher_is_harder
+        )
+        self.num_levels = num_levels
+        stage_epoch_counts = self._build_stage_epoch_counts(num_epochs, num_levels)
         self.stage_boundaries = np.cumsum(stage_epoch_counts)
         self.seed = seed
         self.epoch = 0
+
+    @staticmethod
+    def _assign_levels(
+        difficulty: pd.Series, num_levels: int, higher_is_harder: bool
+    ) -> np.ndarray:
+        scores = difficulty.to_numpy(dtype=float)
+        if not higher_is_harder:
+            scores = -scores
+
+        # Quantile bins: roughly equal row counts per level. Binning is by value
+        # interval, so rows sharing a score (one score per group of 250) always
+        # land in the same level and are never split across two.
+        levels = pd.qcut(scores, num_levels, labels=False, duplicates="drop")
+        levels = levels.astype(np.int64)
+
+        produced = levels.max() + 1
+        if produced < num_levels:
+            raise ValueError(
+                f"Requested {num_levels} levels but the difficulty series only "
+                f"has {difficulty.nunique()} distinct scores, which yields "
+                f"{produced}. Lower num_levels or reduce the group size in "
+                "calculate_difficulty."
+            )
+        return levels
+
+    @staticmethod
+    def _build_stage_epoch_counts(num_epochs: int, num_levels: int) -> list[int]:
+        base, remainder = divmod(num_epochs, num_levels)
+        counts = [base] * num_levels
+        # Distribute leftover epochs to the later (harder) stages first.
+        for i in range(remainder):
+            counts[num_levels - 1 - i] += 1
+        return counts
 
     def set_epoch(self, epoch: int) -> None:
         stage = self.current_stage(epoch)
@@ -43,6 +97,14 @@ class CurriculumSampler(Sampler):
         self.epoch = epoch
 
     def current_stage(self, epoch: int | None = None) -> int:
+        """Get the current stage for the given epoch.
+
+        Args:
+            epoch (int | None, optional): The epoch for which to determine the current stage. Defaults to None, which uses the internally stored epoch.
+
+        Returns:
+            int: The current stage index corresponding to the given epoch.
+        """
         epoch = self.epoch if epoch is None else epoch
         stage = int(np.searchsorted(self.stage_boundaries, epoch, side="right"))
         return min(stage, len(self.stage_boundaries) - 1)
@@ -68,11 +130,38 @@ class CurriculumSampler(Sampler):
 
 
 class CurriculumTrainer(Trainer):
-    """Trainer that draws training batches from a ``CurriculumSampler``."""
+    """Trainer that builds a ``CurriculumSampler`` from its own epoch count.
 
-    def __init__(self, *args, curriculum_sampler: CurriculumSampler, **kwargs):
+    ``num_train_epochs`` already lives on ``TrainingArguments``, so the
+    trainer reads it there instead of the caller passing it (or a derived
+    per-stage split) separately.
+    """
+
+    def __init__(
+        self,
+        *args,
+        difficulty: pd.Series,
+        num_levels: int,
+        curriculum_seed: int = 42,
+        higher_is_harder: bool = True,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
-        self.curriculum_sampler = curriculum_sampler
+
+        num_epochs = self.args.num_train_epochs
+        if num_epochs != int(num_epochs):
+            raise ValueError(
+                f"num_train_epochs must be a whole number for curriculum "
+                f"staging, got {num_epochs}"
+            )
+
+        self.curriculum_sampler = CurriculumSampler(
+            difficulty=difficulty,
+            num_levels=num_levels,
+            num_epochs=int(num_epochs),
+            seed=curriculum_seed,
+            higher_is_harder=higher_is_harder,
+        )
 
     def _get_train_sampler(self, train_dataset=None) -> torch.utils.data.Sampler | None:
         return self.curriculum_sampler

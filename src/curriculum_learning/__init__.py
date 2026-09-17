@@ -1,4 +1,5 @@
 import argparse
+from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -21,21 +22,26 @@ def main() -> None:
     args = parse_args()
     load_dotenv(args.env_file)
 
+    run_group = datetime.now().astimezone().strftime("execution-%Y%m%d-%H%M%S-%z")
+    model_base_name = "bert-base-uncased"
+    num_train_epochs = 10
+
     configs: list[TrainingConfig] = [
         TrainingConfig(
             name="baseline",
-            group="example_group",
             output_dir=Path("output/baseline"),
-            model_base_name="bert-base-uncased",
-            num_train_epochs=5,
+            curriculum_learning=False,
+            group=run_group,
+            model_base_name=model_base_name,
+            num_train_epochs=num_train_epochs,
         ),
         TrainingConfig(
             name="curriculum_baby_steps",
-            group="example_group",
             output_dir=Path("output/curriculum_baby_steps"),
-            model_base_name="bert-base-uncased",
-            num_train_epochs=5,
             curriculum_learning=True,
+            group=run_group,
+            model_base_name=model_base_name,
+            num_train_epochs=num_train_epochs,
         ),
     ]
 

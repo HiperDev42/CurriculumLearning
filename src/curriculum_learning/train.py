@@ -6,9 +6,14 @@ from typing import Any
 
 import numpy as np
 
-from curriculum_learning.config import PROJECT_NAME
-from curriculum_learning.curriculum import CurriculumSampler, CurriculumTrainer
-from curriculum_learning.data import load_base_dataset, tokenize_dataset
+from curriculum_learning.config import WANDB_PROJECT_NAME
+from curriculum_learning.curriculum import CurriculumTrainer
+from curriculum_learning.data import (
+    calculate_difficulty,
+    heuristic_functions,
+    load_base_dataset,
+    tokenize_dataset,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +39,9 @@ class TrainingConfig:
     seed: int = 42
 
     curriculum_learning: bool = False
+    heuristic_fn: str = "word_count"
+    complexity_metric: str = "pragmatic_deletion_bzip2"
+    num_levels: int = 3
 
 
 def run_training(config: TrainingConfig):
@@ -69,7 +77,7 @@ def run_training(config: TrainingConfig):
     # test_dataset = tokenize_dataset(base_dataset["test"], tokenizer)
 
     wandb.init(
-        project=PROJECT_NAME,
+        project=WANDB_PROJECT_NAME,
         name=config.name,
         group=config.group,
         config=asdict(config),
@@ -97,12 +105,24 @@ def run_training(config: TrainingConfig):
     trainer: Trainer
 
     if config.curriculum_learning:
+        logger.info(
+            "Calculating difficulty levels for curriculum learning using heuristic function '%s' and complexity metric '%s'",
+            config.heuristic_fn,
+            config.complexity_metric,
+        )
+
+        heuristic_fn = heuristic_functions[config.heuristic_fn]
+        difficulty = calculate_difficulty(
+            train_dataset.to_pandas(),
+            heuristic_fn=heuristic_fn,
+            metric_name=config.complexity_metric,
+        )
+
+        logger.info("Using curriculum learning for training")
         trainer = CurriculumTrainer(
-            curriculum_sampler=CurriculumSampler(
-                difficulty_levels=[0] * len(train_dataset),
-                stage_epoch_counts=[config.num_train_epochs],
-                seed=config.seed,
-            ),
+            difficulty=difficulty,
+            num_levels=config.num_levels,
+            curriculum_seed=config.seed,
             model=model,
             args=training_args,
             train_dataset=train_dataset,
@@ -111,6 +131,7 @@ def run_training(config: TrainingConfig):
             compute_metrics=compute_metrics,
         )
     else:
+        logger.info("Using standard training")
         trainer = Trainer(
             model=model,
             args=training_args,
