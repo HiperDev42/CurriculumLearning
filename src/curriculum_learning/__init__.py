@@ -27,12 +27,14 @@ def main() -> None:
             group="example_group",
             output_dir=Path("output/example_run"),
             model_base_name="bert-base-uncased",
+            num_train_epochs=5,
         ),
         TrainingConfig(
             name="example_run_2",
             group="example_group",
             output_dir=Path("output/example_run_2"),
             model_base_name="bert-base-uncased",
+            num_train_epochs=5,
         ),
     ]
 

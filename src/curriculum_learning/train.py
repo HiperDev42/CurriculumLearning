@@ -6,10 +6,9 @@ from typing import Any
 
 import numpy as np
 
+from curriculum_learning.config import PROJECT_NAME
+from curriculum_learning.curriculum import CurriculumSampler, CurriculumTrainer
 from curriculum_learning.data import load_base_dataset, tokenize_dataset
-
-PROJECT_NAME = "curriculum-learning"
-OUTPUT_DIR_BASE: Path = Path("output/")
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +97,19 @@ def run_training(config: TrainingConfig):
     trainer: Trainer
 
     if config.curriculum_learning:
-        raise NotImplementedError("Curriculum learning is not yet implemented")
+        trainer = CurriculumTrainer(
+            curriculum_sampler=CurriculumSampler(
+                difficulty_levels=[0] * len(train_dataset),
+                stage_epoch_counts=[config.num_train_epochs],
+                seed=config.seed,
+            ),
+            model=model,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=validation_dataset,
+            data_collator=data_collator,
+            compute_metrics=compute_metrics,
+        )
     else:
         trainer = Trainer(
             model=model,
