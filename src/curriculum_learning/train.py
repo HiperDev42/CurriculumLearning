@@ -72,7 +72,8 @@ def run_training(config: TrainingConfig):
         )
 
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
-    train_dataset = tokenize_dataset(base_dataset["train"], tokenizer)
+    base_train_dataset = base_dataset["train"]
+    train_dataset = tokenize_dataset(base_train_dataset, tokenizer)
     validation_dataset = tokenize_dataset(base_dataset["validation"], tokenizer)
     # test_dataset = tokenize_dataset(base_dataset["test"], tokenizer)
 
@@ -113,7 +114,7 @@ def run_training(config: TrainingConfig):
 
         heuristic_fn = heuristic_functions[config.heuristic_fn]
         difficulty = calculate_difficulty(
-            train_dataset.to_pandas(),
+            base_train_dataset.to_pandas(),
             heuristic_fn=heuristic_fn,
             metric_name=config.complexity_metric,
         )
