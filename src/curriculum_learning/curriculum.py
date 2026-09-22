@@ -12,10 +12,11 @@ logger = logging.getLogger(__name__)
 class CurriculumSampler(Sampler):
     """Sampler that restricts training to progressively harder difficulty levels.
 
-    ``difficulty`` is bucketed into ``num_levels`` quantile levels (roughly
-    equal row counts), level 0 being the easiest, via ``pd.qcut``. Since
-    quantile binning splits by value interval, rows sharing a difficulty
-    score always land in the same level.
+    ``difficulty`` is sorted and cut into ``num_levels`` equal-size chunks,
+    level 0 being the easiest. Rows are ordered by (score, original index)
+    before cutting, so ties are broken by id order rather than being kept
+    together, guaranteeing every level gets the same number of rows (up to
+    a difference of one when the row count doesn't divide evenly).
 
     ``num_epochs`` (the total training epoch count) is split across the
     ``num_levels`` stages as evenly as possible; any remainder epochs go to
@@ -59,24 +60,23 @@ class CurriculumSampler(Sampler):
     def _assign_levels(
         difficulty: pd.Series, num_levels: int, higher_is_harder: bool
     ) -> np.ndarray:
+        if num_levels > len(difficulty):
+            raise ValueError(
+                f"num_levels ({num_levels}) must be <= number of rows "
+                f"({len(difficulty)})"
+            )
+
         scores = difficulty.to_numpy(dtype=float)
         if not higher_is_harder:
             scores = -scores
 
-        # Quantile bins: roughly equal row counts per level. Binning is by value
-        # interval, so rows sharing a score (one score per group of 250) always
-        # land in the same level and are never split across two.
-        levels = pd.qcut(scores, num_levels, labels=False, duplicates="drop")
-        levels = levels.astype(np.int64)
+        # Stable sort keeps tied scores in original (id) order instead of
+        # grouping them together, so the equal-size cut below is deterministic.
+        order = np.argsort(scores, kind="stable")
 
-        produced = levels.max() + 1
-        if produced < num_levels:
-            raise ValueError(
-                f"Requested {num_levels} levels but the difficulty series only "
-                f"has {difficulty.nunique()} distinct scores, which yields "
-                f"{produced}. Lower num_levels or reduce the group size in "
-                "calculate_difficulty."
-            )
+        levels = np.empty(len(scores), dtype=np.int64)
+        for level, chunk in enumerate(np.array_split(order, num_levels)):
+            levels[chunk] = level
         return levels
 
     @staticmethod

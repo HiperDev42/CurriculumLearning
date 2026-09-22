@@ -41,6 +41,7 @@ class TrainingConfig:
     curriculum_learning: bool = False
     heuristic_fn: str = "word_count"
     complexity_metric: str = "pragmatic_deletion_bzip2"
+    higher_is_harder: bool = True
     num_levels: int = 3
 
 
@@ -76,14 +77,6 @@ def run_training(config: TrainingConfig):
     train_dataset = tokenize_dataset(base_train_dataset, tokenizer)
     validation_dataset = tokenize_dataset(base_dataset["validation"], tokenizer)
     # test_dataset = tokenize_dataset(base_dataset["test"], tokenizer)
-
-    wandb.init(
-        project=WANDB_PROJECT_NAME,
-        name=config.name,
-        group=config.group,
-        config=asdict(config),
-        resume="never",
-    )
 
     training_args = TrainingArguments(
         output_dir=str(config.output_dir),
@@ -128,6 +121,7 @@ def run_training(config: TrainingConfig):
         trainer = CurriculumTrainer(
             difficulty=difficulty,
             num_levels=config.num_levels,
+            higher_is_harder=config.higher_is_harder,
             curriculum_seed=config.seed,
             model=model,
             args=training_args,
@@ -148,7 +142,24 @@ def run_training(config: TrainingConfig):
         )
 
     try:
-        return trainer.train()
+        wandb.init(
+            project=WANDB_PROJECT_NAME,
+            name=config.name,
+            group=config.group,
+            config=asdict(config),
+            resume="never",
+        )
+
+        training_result = trainer.train()
+        trainer.save_model()
+        tokenizer.save_pretrained(config.output_dir)
+        trainer.state.save_to_json(str(config.output_dir / "trainer_state.json"))
+        logger.info(
+            "Saved the best model from checkpoint %s to %s",
+            trainer.state.best_model_checkpoint,
+            config.output_dir,
+        )
+        return training_result
     finally:
         wandb.finish()
 
