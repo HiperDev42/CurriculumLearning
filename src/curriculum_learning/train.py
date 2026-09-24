@@ -2,7 +2,7 @@ import logging
 from dataclasses import asdict, dataclass
 from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -14,6 +14,9 @@ from curriculum_learning.data import (
     load_base_dataset,
     tokenize_dataset,
 )
+
+if TYPE_CHECKING:
+    from transformers import Trainer
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +44,10 @@ class TrainingConfig:
     curriculum_learning: bool = False
     heuristic_fn: str = "word_count"
     complexity_metric: str = "pragmatic_deletion_bzip2"
-    higher_is_harder: bool = True
     num_levels: int = 3
 
 
-def run_training(config: TrainingConfig):
+def run_training(config: TrainingConfig, report_wandb: bool = True) -> "Trainer":
     from transformers import (
         AutoModelForSequenceClassification,
         AutoTokenizer,
@@ -78,21 +80,31 @@ def run_training(config: TrainingConfig):
     validation_dataset = tokenize_dataset(base_dataset["validation"], tokenizer)
     # test_dataset = tokenize_dataset(base_dataset["test"], tokenizer)
 
+    if report_wandb:
+        wandb.init(
+            project=WANDB_PROJECT_NAME,
+            name=config.name,
+            group=config.group,
+            config=asdict(config),
+            resume="never",
+        )
+
     training_args = TrainingArguments(
         output_dir=str(config.output_dir),
         logging_strategy="steps",
         eval_strategy="epoch",
         save_strategy="epoch",
+        save_total_limit=10,
         learning_rate=config.learning_rate,
         per_device_train_batch_size=config.train_batch_size,
         per_device_eval_batch_size=config.eval_batch_size,
         num_train_epochs=config.num_train_epochs,
         weight_decay=0.01,
         load_best_model_at_end=True,
-        metric_for_best_model="roc_auc",
+        metric_for_best_model="accuracy",
         greater_is_better=True,
         seed=config.seed,
-        report_to=["wandb"],
+        report_to=["wandb"] if report_wandb else [],
         run_name=f"{config.group}/{config.name}",
     )
     logger.info("Training device: %s", training_args.device)
@@ -121,7 +133,6 @@ def run_training(config: TrainingConfig):
         trainer = CurriculumTrainer(
             difficulty=difficulty,
             num_levels=config.num_levels,
-            higher_is_harder=config.higher_is_harder,
             curriculum_seed=config.seed,
             model=model,
             args=training_args,
@@ -142,26 +153,11 @@ def run_training(config: TrainingConfig):
         )
 
     try:
-        wandb.init(
-            project=WANDB_PROJECT_NAME,
-            name=config.name,
-            group=config.group,
-            config=asdict(config),
-            resume="never",
-        )
-
-        training_result = trainer.train()
-        trainer.save_model()
-        tokenizer.save_pretrained(config.output_dir)
-        trainer.state.save_to_json(str(config.output_dir / "trainer_state.json"))
-        logger.info(
-            "Saved the best model from checkpoint %s to %s",
-            trainer.state.best_model_checkpoint,
-            config.output_dir,
-        )
-        return training_result
+        trainer.train()
+        return trainer
     finally:
-        wandb.finish()
+        if report_wandb:
+            wandb.finish()
 
 
 def compute_metrics(eval_pred):
