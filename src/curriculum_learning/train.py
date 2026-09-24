@@ -44,6 +44,7 @@ class TrainingConfig:
     curriculum_learning: bool = False
     heuristic_fn: str = "word_count"
     complexity_metric: str = "pragmatic_deletion_bzip2"
+    higher_is_harder: bool = True
     num_levels: int = 3
 
 
@@ -137,6 +138,7 @@ def run_training(config: TrainingConfig, report_wandb: bool = True) -> "Trainer"
             model=model,
             args=training_args,
             train_dataset=train_dataset,
+            higher_is_harder=config.higher_is_harder,
             eval_dataset=validation_dataset,
             data_collator=data_collator,
             compute_metrics=compute_metrics,

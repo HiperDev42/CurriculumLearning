@@ -1,0 +1,16 @@
+name: curriculum_baby_steps
+group: execution-${now:%Y%m%d-%H%M%S-%z}
+output_dir: output/${name}_levels_${num_levels}
+model_base_name: bert-base-uncased
+
+learning_rate: 2e-5
+train_batch_size: 8
+eval_batch_size: 8
+num_train_epochs: 50
+seed: 42
+
+curriculum_learning: true
+heuristic_fn: word_count
+complexity_metric: pragmatic_deletion_bzip2
+higher_is_harder: true
+num_levels: 3
