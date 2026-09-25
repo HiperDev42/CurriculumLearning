@@ -9,7 +9,7 @@ eval_batch_size: 8
 num_train_epochs: 50
 seed: 42
 
-curriculum_learning: true
+curriculum_learning: false
 heuristic_fn: word_count
 complexity_metric: pragmatic_deletion_bzip2
 higher_is_harder: true

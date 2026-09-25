@@ -1,6 +1,7 @@
 import json
 import logging
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -8,6 +9,8 @@ import torch
 from datasets import Dataset
 from torch.utils.data import DataLoader
 from transformers import (
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
     BertForSequenceClassification,
     DataCollatorWithPadding,
     PreTrainedModel,
@@ -15,6 +18,7 @@ from transformers import (
 )
 
 logger = logging.getLogger(__name__)
+LABEL_NAMES = {0: "NONE", 1: "ENTAILMENT"}
 
 
 @dataclass
@@ -42,6 +46,44 @@ def get_best_checkpoint(model_dir: Path) -> Path:
             if local_checkpoint_dir.exists():
                 return local_checkpoint_dir
     raise FileNotFoundError(f"No best checkpoint found in {model_dir}")
+
+
+@lru_cache(maxsize=4)
+def load_model(model_dir: Path):
+    checkpoint_dir = get_best_checkpoint(model_dir)
+    tokenizer = AutoTokenizer.from_pretrained(checkpoint_dir)
+    model = AutoModelForSequenceClassification.from_pretrained(checkpoint_dir)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    model.eval()
+    return model, tokenizer, device
+
+
+def predict_text(
+    model_dir: Path, premise: str, hypothesis: str
+) -> tuple[str, dict[str, float]]:
+    """Predict an entailment label and probabilities for one text pair."""
+    if not premise.strip() or not hypothesis.strip():
+        raise ValueError("Both premise and hypothesis are required.")
+
+    model, tokenizer, device = load_model(model_dir)
+    inputs = tokenizer(
+        premise,
+        hypothesis,
+        truncation=True,
+        max_length=256,
+        return_tensors="pt",
+    )
+    inputs = {name: value.to(device) for name, value in inputs.items()}
+    with torch.inference_mode():
+        probabilities = torch.softmax(model(**inputs).logits, dim=-1)[0]
+
+    scores = {
+        LABEL_NAMES.get(index, f"LABEL_{index}"): round(float(score), 4)
+        for index, score in enumerate(probabilities.detach().cpu())
+    }
+    predicted_index = int(probabilities.argmax())
+    return LABEL_NAMES.get(predicted_index, f"LABEL_{predicted_index}"), scores
 
 
 def predict_pair(
