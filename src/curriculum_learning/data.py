@@ -1,8 +1,14 @@
+import hashlib
+import json
 import logging
 import random
+import tempfile
 from collections.abc import Callable
 from functools import lru_cache
+from importlib.metadata import version
+from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from datasets import Dataset, load_dataset
 from datasets.dataset_dict import DatasetDict
@@ -37,6 +43,11 @@ def calculate_difficulty(
     dataframe: pd.DataFrame,
     heuristic_fn: Callable = heuristic_functions["word_count"],
     metric_name: str = "pragmatic_deletion_bzip2",
+    *,
+    heuristic_name: str | None = None,
+    dataset_fingerprint: str | None = None,
+    cache_dir: Path | None = None,
+    seed: int | None = None,
 ) -> pd.Series:
     df = dataframe
     group_size = 250
@@ -48,7 +59,50 @@ def calculate_difficulty(
     if df.empty:
         return pd.Series(dtype=float, name="difficulty")
 
-    heuristic_score = df.apply(heuristic_fn, axis=1)
+    if cache_dir is not None and (
+        heuristic_name is None or dataset_fingerprint is None
+    ):
+        raise ValueError(
+            "heuristic_name and dataset_fingerprint are required when caching difficulty"
+        )
+    if cache_dir is not None and heuristic_name == "random" and seed is None:
+        raise ValueError("A seed is required to cache the random heuristic")
+
+    cache_path: Path | None = None
+    if cache_dir is not None:
+        cache_key_data = {
+            "schema": 1,
+            "dataset_fingerprint": dataset_fingerprint,
+            "heuristic": heuristic_name,
+            "metric": metric_name,
+            "metric_version": version("lang-complexity"),
+            "group_size": group_size,
+            "seed": seed if heuristic_name == "random" else None,
+        }
+        cache_key = hashlib.sha256(
+            json.dumps(cache_key_data, sort_keys=True).encode()
+        ).hexdigest()
+        cache_path = cache_dir / f"{cache_key}.npy"
+        if cache_path.exists():
+            cached_difficulty = np.load(cache_path, allow_pickle=False)
+            if cached_difficulty.shape != (len(df),):
+                raise ValueError(
+                    f"Cached difficulty has shape {cached_difficulty.shape}, "
+                    f"expected ({len(df)},): {cache_path}"
+                )
+            logger.info("Loaded cached difficulty scores from %s", cache_path)
+            return pd.Series(
+                cached_difficulty,
+                index=df.index,
+                dtype=float,
+                name="difficulty",
+            )
+
+    if heuristic_name == "random" and seed is not None:
+        rng = random.Random(seed)
+        heuristic_score = df.apply(lambda _: rng.random(), axis=1)
+    else:
+        heuristic_score = df.apply(heuristic_fn, axis=1)
     sorted_index = heuristic_score.sort_values().index
 
     difficulty = pd.Series(index=df.index, dtype=float, name="difficulty")
@@ -58,6 +112,25 @@ def calculate_difficulty(
         group = df.loc[group_index]
         text = "\n".join(group["premise"].tolist() + group["hypothesis"].tolist())
         difficulty.loc[group_index] = metric_fn(text)
+
+    if cache_path is not None:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=cache_path.parent,
+                prefix=f".{cache_path.stem}.",
+                suffix=".tmp",
+                delete=False,
+            ) as cache_file:
+                temporary_path = Path(cache_file.name)
+                np.save(cache_file, difficulty.to_numpy(dtype=np.float64))
+            temporary_path.replace(cache_path)
+            logger.info("Saved difficulty scores to cache %s", cache_path)
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
 
     return difficulty
 

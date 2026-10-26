@@ -33,3 +33,15 @@ uv run curriculum-learning \
 As revisões são opcionais; quando omitidas, o Hugging Face usa a revisão padrão
 do repositório, que pode mudar. O resumo registra a revisão resolvida do modelo
 e o fingerprint de cada split carregado para ajudar a identificar os dados.
+
+## Custo e armazenamento
+
+Os experimentos continuam avaliando e salvando ao fim de cada época, sem parada
+antecipada, para manter a mesma curva de avaliação entre métodos. O número de
+checkpoints mantidos é limitado a dois; as métricas de todas as avaliações
+permanecem nos logs do Trainer, e o melhor modelo é preservado para avaliação.
+
+Em experimentos com currículo, os escores de dificuldade são armazenados em
+`outputs/.cache/difficulty` e reutilizados entre execuções quando dataset,
+heurística, métrica e parâmetros correspondem. Para a heurística aleatória, a
+seed também faz parte da chave do cache.

@@ -54,6 +54,7 @@ class TrainingConfig:
     complexity_metric: str = "pragmatic_deletion_bzip2"
     higher_is_harder: bool = True
     num_levels: int = 3
+    save_total_limit: int = 2
 
 
 def run_training(config: TrainingConfig, report_wandb: bool = True) -> "Trainer":
@@ -113,7 +114,7 @@ def run_training(config: TrainingConfig, report_wandb: bool = True) -> "Trainer"
         logging_strategy="steps",
         eval_strategy="epoch",
         save_strategy="epoch",
-        save_total_limit=10,
+        save_total_limit=config.save_total_limit,
         learning_rate=config.learning_rate,
         per_device_train_batch_size=config.train_batch_size,
         per_device_eval_batch_size=config.eval_batch_size,
@@ -148,6 +149,10 @@ def run_training(config: TrainingConfig, report_wandb: bool = True) -> "Trainer"
             cast(pd.DataFrame, base_train_dataset.to_pandas()),
             heuristic_fn=heuristic_fn,
             metric_name=config.complexity_metric,
+            heuristic_name=config.heuristic_fn,
+            dataset_fingerprint=base_train_dataset._fingerprint,
+            cache_dir=config.output_dir.parent / ".cache" / "difficulty",
+            seed=config.seed,
         )
 
         logger.info("Using curriculum learning for training")
