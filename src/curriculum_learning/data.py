@@ -5,6 +5,7 @@ from functools import lru_cache
 
 import pandas as pd
 from datasets import Dataset, load_dataset
+from datasets.dataset_dict import DatasetDict
 from lang_complexity.complexity import complexities
 from transformers import PreTrainedTokenizerBase
 
@@ -12,7 +13,7 @@ BASE_DATASET_NAME = "nilc-nlp/assin2"
 
 
 @lru_cache(maxsize=1)
-def load_base_dataset():
+def load_base_dataset() -> DatasetDict:
     return load_dataset(BASE_DATASET_NAME)
 
 
@@ -63,12 +64,14 @@ def calculate_difficulty(
 
 def tokenize_dataset(dataset: Dataset, tokenizer: PreTrainedTokenizerBase):
     logger.debug("Tokenizing dataset with %d rows", len(dataset))
-    tokenize_fn = lambda batch: tokenizer(
-        batch["premise"],
-        batch["hypothesis"],
-        truncation=True,
-        max_length=256,
-    )
+
+    def tokenize_fn(batch):
+        return tokenizer(
+            batch["premise"],
+            batch["hypothesis"],
+            truncation=True,
+            max_length=256,
+        )
 
     processed_dataset = dataset.map(
         tokenize_fn,

@@ -1,6 +1,6 @@
-name: curriculum_baby_steps
-group: execution-${now:%Y%m%d-%H%M%S-%z}
-output_dir: output/${name}_levels_${num_levels}
+group: baseline
+name: ${group}-${now:%Y%m%d-%H%M%S-%z}
+output_dir: outputs/${name}
 model_base_name: bert-base-uncased
 
 learning_rate: 2e-5

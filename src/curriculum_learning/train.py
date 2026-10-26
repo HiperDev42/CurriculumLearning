@@ -1,10 +1,12 @@
+import json
 import logging
 from dataclasses import asdict, dataclass
 from functools import cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
+import pandas as pd
 
 from curriculum_learning.config import WANDB_PROJECT_NAME
 from curriculum_learning.curriculum import CurriculumTrainer
@@ -79,7 +81,7 @@ def run_training(config: TrainingConfig, report_wandb: bool = True) -> "Trainer"
     base_train_dataset = base_dataset["train"]
     train_dataset = tokenize_dataset(base_train_dataset, tokenizer)
     validation_dataset = tokenize_dataset(base_dataset["validation"], tokenizer)
-    # test_dataset = tokenize_dataset(base_dataset["test"], tokenizer)
+    test_dataset = tokenize_dataset(base_dataset["test"], tokenizer)
 
     if report_wandb:
         wandb.init(
@@ -125,7 +127,7 @@ def run_training(config: TrainingConfig, report_wandb: bool = True) -> "Trainer"
 
         heuristic_fn = heuristic_functions[config.heuristic_fn]
         difficulty = calculate_difficulty(
-            base_train_dataset.to_pandas(),
+            cast(pd.DataFrame, base_train_dataset.to_pandas()),
             heuristic_fn=heuristic_fn,
             metric_name=config.complexity_metric,
         )
@@ -156,6 +158,18 @@ def run_training(config: TrainingConfig, report_wandb: bool = True) -> "Trainer"
 
     try:
         trainer.train()
+        trainer.save_model(str(config.output_dir))
+        tokenizer.save_pretrained(config.output_dir)
+        test_metrics = trainer.evaluate(test_dataset, metric_key_prefix="test")
+        summary = {
+            "best_model_path": str(config.output_dir.resolve()),
+            "best_checkpoint": trainer.state.best_model_checkpoint,
+            "best_metric": trainer.state.best_metric,
+            "metric_for_best_model": training_args.metric_for_best_model,
+            "test_metrics": test_metrics,
+        }
+        with (config.output_dir / "training_summary.json").open("w") as summary_file:
+            json.dump(summary, summary_file, indent=2)
         return trainer
     finally:
         if report_wandb:

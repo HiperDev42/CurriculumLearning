@@ -29,6 +29,18 @@ class PredictionResult:
 
 
 def get_best_checkpoint(model_dir: Path) -> Path:
+    summary_path = model_dir / "training_summary.json"
+    if summary_path.exists():
+        with summary_path.open() as summary_file:
+            best_model_path = json.load(summary_file).get("best_model_path")
+        if best_model_path:
+            checkpoint_dir = Path(best_model_path)
+            if not checkpoint_dir.is_absolute():
+                candidate = model_dir / checkpoint_dir
+                checkpoint_dir = candidate if candidate.exists() else model_dir
+            if checkpoint_dir.exists():
+                return checkpoint_dir
+
     state_paths = [
         model_dir / "trainer_state.json",
         *model_dir.glob("checkpoint-*/trainer_state.json"),
