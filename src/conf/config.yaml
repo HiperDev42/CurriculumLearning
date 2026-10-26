@@ -2,6 +2,9 @@ group: baseline
 name: ${group}-${now:%Y%m%d-%H%M%S-%z}
 output_dir: outputs/${name}
 model_base_name: bert-base-uncased
+model_revision: null
+dataset_revision: null
+full_determinism: true
 
 learning_rate: 2e-5
 train_batch_size: 8

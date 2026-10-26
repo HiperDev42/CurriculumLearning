@@ -1,7 +1,10 @@
 import json
 import logging
+import platform
+import sys
 from dataclasses import asdict, dataclass
 from functools import cache
+from importlib.metadata import version
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -37,6 +40,9 @@ class TrainingConfig:
     output_dir: Path
     model_base_name: str
 
+    model_revision: str | None = None
+    dataset_revision: str | None = None
+    full_determinism: bool = True
     learning_rate: float = 2e-5
     train_batch_size: int = 8
     eval_batch_size: int = 8
@@ -58,20 +64,30 @@ def run_training(config: TrainingConfig, report_wandb: bool = True) -> "Trainer"
         PreTrainedTokenizerBase,
         Trainer,
         TrainingArguments,
+        set_seed,
     )
 
     import wandb
 
     config.output_dir.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Training output will be saved to {config.output_dir}")
+    logger.info("Training output will be saved to %s", config.output_dir)
+    config_values = asdict(config)
+    config_values["output_dir"] = str(config.output_dir)
+    with (config.output_dir / "training_config.json").open("w") as config_file:
+        json.dump(config_values, config_file, indent=2)
 
+    set_seed(config.seed, deterministic=config.full_determinism)
     logger.info("Loading model")
     model = AutoModelForSequenceClassification.from_pretrained(
         config.model_base_name,
+        revision=config.model_revision,
         num_labels=2,
     )
-    base_dataset = load_base_dataset()
-    tokenizer = AutoTokenizer.from_pretrained(config.model_base_name)
+    base_dataset = load_base_dataset(config.dataset_revision)
+    tokenizer = AutoTokenizer.from_pretrained(
+        config.model_base_name,
+        revision=config.model_revision,
+    )
     if not isinstance(tokenizer, PreTrainedTokenizerBase):
         raise TypeError(
             f"Expected a PreTrainedTokenizerBase, got {type(tokenizer).__name__}"
@@ -88,7 +104,7 @@ def run_training(config: TrainingConfig, report_wandb: bool = True) -> "Trainer"
             project=WANDB_PROJECT_NAME,
             name=config.name,
             group=config.group,
-            config=asdict(config),
+            config=config_values,
             resume="never",
         )
 
@@ -107,6 +123,8 @@ def run_training(config: TrainingConfig, report_wandb: bool = True) -> "Trainer"
         metric_for_best_model="accuracy",
         greater_is_better=True,
         seed=config.seed,
+        data_seed=config.seed,
+        full_determinism=config.full_determinism,
         report_to=["wandb"] if report_wandb else [],
         run_name=f"{config.group}/{config.name}",
     )
@@ -166,6 +184,27 @@ def run_training(config: TrainingConfig, report_wandb: bool = True) -> "Trainer"
             "best_checkpoint": trainer.state.best_model_checkpoint,
             "best_metric": trainer.state.best_metric,
             "metric_for_best_model": training_args.metric_for_best_model,
+            "seed": config.seed,
+            "model_revision": config.model_revision,
+            "resolved_model_revision": getattr(model.config, "_commit_hash", None),
+            "dataset_revision": config.dataset_revision,
+            "dataset_fingerprints": {
+                split: dataset._fingerprint for split, dataset in base_dataset.items()
+            },
+            "environment": {
+                "python": sys.version,
+                "platform": platform.platform(),
+                "packages": {
+                    package: version(package)
+                    for package in (
+                        "datasets",
+                        "lang-complexity",
+                        "numpy",
+                        "torch",
+                        "transformers",
+                    )
+                },
+            },
             "test_metrics": test_metrics,
         }
         with (config.output_dir / "training_summary.json").open("w") as summary_file:

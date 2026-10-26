@@ -13,8 +13,8 @@ BASE_DATASET_NAME = "nilc-nlp/assin2"
 
 
 @lru_cache(maxsize=1)
-def load_base_dataset() -> DatasetDict:
-    return load_dataset(BASE_DATASET_NAME)
+def load_base_dataset(revision: str | None = None) -> DatasetDict:
+    return load_dataset(BASE_DATASET_NAME, revision=revision)
 
 
 logger = logging.getLogger(__name__)

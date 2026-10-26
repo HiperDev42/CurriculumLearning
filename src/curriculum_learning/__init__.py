@@ -30,7 +30,10 @@ def main(cfg: DictConfig) -> None:
 
     values = cast(dict[str, Any], OmegaConf.to_container(cfg, resolve=True))
 
-    values["output_dir"] = Path(values["output_dir"])
+    output_dir = Path(values["output_dir"])
+    if not output_dir.is_absolute():
+        output_dir = project_root / output_dir
+    values["output_dir"] = output_dir
     training_config = TrainingConfig(**values)
 
     run_training(training_config)

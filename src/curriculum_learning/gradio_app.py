@@ -4,9 +4,10 @@ from typing import Any
 import gradio as gr
 
 from curriculum_learning.analysis import predict_text
+from curriculum_learning.config import OUTPUT_DIR_BASE
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-OUTPUT_DIR = PROJECT_ROOT / "output"
+OUTPUT_DIR = PROJECT_ROOT / OUTPUT_DIR_BASE
 
 
 def list_models() -> list[str]:
